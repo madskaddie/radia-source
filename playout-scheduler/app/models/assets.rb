@@ -1,16 +1,23 @@
 module  PlayoutScheduler
 
-    class Single
+    class AudioAsset
         include DataMapper::Resource
 
         property :id, Integer, :key => true
-        property :retrieval_uri, String
+        property :type, Discriminator
+        property :name, String
         property :length, Float
-
-
         
+        has n, :segments
+        has n, :broadcasts
+    end
+    class Single < AudioAsset
+
+        property :retrieval_uri, String
+        property :live_source, String
+        property :md5_hash, String
+
         def self.load_from_scheduler asset
-                p 123234214
             begin
                 a = Single.get!(asset.id)
             rescue DataMapper::ObjectNotFoundError
@@ -21,9 +28,8 @@ module  PlayoutScheduler
 
     end
 
-    class Playlist
-        def initialize uid
-            @uid = uid
-        end
+    class Playlist < AudioAsset
+        has n, :elements, 'AudioAsset'
     end
+
 end

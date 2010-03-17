@@ -11,18 +11,19 @@ module PlayoutScheduler
     Day = 24*60*60
 
     class Segment
-        def initialize type, uri, length
-            @type = type
-            if [:Single, :Playlist].include?(type)
-                #@asset = eval(type + ".new(uri)")
-                
-                # Alternative to ugly eval:
-                @asset =PlayoutScheduler.const_get(type).new(uri)
-            else
-                @asset = nil
-            end
-            @length= length
-        end
+        include DataMapper::Resource
+
+        property :id, Integer, :key => true
+        property :type, Enum[:Single, :Playlist], :default => :Single
+        property :length, Integer
+        property :position, Integer
+        property :items_to_play, Integer
+        property :random, Boolean
+        property :fill, Boolean
+
+        belongs_to :broadcast
+        has n, :audio_assets
+
 
         def self.load_from_scheduler seg
             if seg.respond_to? "single" then 
@@ -40,6 +41,19 @@ module PlayoutScheduler
     class Broadcast
         attr_reader :name, :type, :dtstart, :dtend, :structure
         attr_accessor :timer
+
+        include DataMapper::Resource
+
+        property :id, Integer, :key => true
+        property :name, String
+        property :dtstart, DateTime
+        property :dtend, DateTime
+        property :type, Enum[:gap,:emission], :default => :gap
+        property :last_update, DateTime
+
+        has n, :segments
+        has n, :audio_assets, 'Broadcast'
+
         def initialize name, type, dtstart, dtend, structure = nil
             @name = name
             @dtstart = dtstart
@@ -86,15 +100,11 @@ module PlayoutScheduler
         end
 
         def is_gap?
-            return true if @type == :gap
-            return false
+            return @type.eql?(:gap)
         end 
 
         def to_s
-             #dtstart = "#{@dtstart.year}/#{@dtstart.month}/#{@dtstart.day} #{@dtstart.hour}:#{@dtstart.min}:#{@dtstart.sec}"
-             #dtend = "#{@dtend.year}/#{@dtend.month}/#{@dtend.day} #{@dtend.hour}:#{@dtend.min}:#{@dtend.sec}"
              "%s: %s | %s" % [@name.ljust(15)[0..14], @dtstart, @dtend]
-             #sprintf("%15s: %s | %s\n", @name, @dtstart, @dtend)
         end
     end
 
@@ -132,26 +142,11 @@ module PlayoutScheduler
                 bcasts = bcasts.select { |x| x.dtstart > last_time }
                 @broadcasts +=  bcasts
             end
-            #debug_log("%s: old:%2i; added:%2i; new:%2i; time to last: %s" % 
-            ##["update ser.".ljust(10)[0...10], old_length, bcasts.length, @broadcasts.length, @broadcasts[-1].dtstart.to_s])
         end
 
         protected
-        def load_yaml obj
-            require 'yaml'
-            broadcasts = []
-            YAML::load( obj ).each do |broadcast|
-                struct = broadcast["structure"].select do |segment|
-                    Segment.new segment["type"].to_sym, segment["uri"], segment["length"]
-                end
-                broadcasts << Broadcast.new(broadcast["name"], broadcast["type"], 
-                                            broadcast["dtstart"], broadcast["dtend"], struct)
-            end
-            broadcasts
-        end
 
         def self.fetch_scheduler(n=0)
-            require 'playout_middleware'
             bcasts = PlayoutMiddleware::fetch
             return bcasts if n==0
             nn = (n>bcasts.length)? -1 : n - 1
